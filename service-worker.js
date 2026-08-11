@@ -1,7 +1,7 @@
 // Cache versionado: al subir un cambio, aumentá CACHE_VERSION para que
 // se descarte el caché viejo automáticamente. Así se evita el problema
 // de quedar sirviendo una versión desactualizada de la app.
-const CACHE_VERSION = 'ftth-pro-v1';
+const CACHE_VERSION = 'ftth-pro-v4';
 const APP_SHELL = [
   './',
   './index.html',

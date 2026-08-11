@@ -2,8 +2,8 @@
 <html lang="es">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Red FTTH Pro DOMINGUEZ</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<title>Red FTTH Pro</title>
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.css">
 <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet.markercluster/1.5.3/MarkerCluster.Default.css">
@@ -368,20 +368,60 @@
   @media (max-width:760px){
     #menuBtn{display:inline-flex;align-items:center;justify-content:center;}
     #closeSidebarBtn{display:block !important;}
-    #sidebar{position:absolute;left:-290px;top:0;bottom:0;transition:left .2s;z-index:25;height:100%;}
+    #sidebar{position:absolute;left:-290px;top:0;bottom:0;transition:left .2s;z-index:25;height:100%;width:270px;}
     #sidebar.open{left:0;}
     #sidebarBackdrop{display:none;position:absolute;inset:0;background:rgba(0,0,0,0.5);z-index:24;}
     #sidebarBackdrop.show{display:block;}
     #editpanel{width:92%;right:-100%;}
     .logo span.full{display:none;}
+
+    /* Barra superior: en vez de amontonar todo en una fila, se acomoda
+       en filas que se pueden deslizar horizontalmente con el dedo. */
+    #topbar{flex-wrap:wrap;padding:8px 10px;gap:6px;row-gap:6px;}
+    #topbar .logo{font-size:13px;}
+    #tabs{
+      order:3;width:100%;display:flex;overflow-x:auto;-webkit-overflow-scrolling:touch;
+      flex-wrap:nowrap;margin-left:0;padding-bottom:2px;scrollbar-width:none;
+    }
+    #tabs::-webkit-scrollbar{display:none;}
+    .tab-btn{flex-shrink:0;padding:7px 12px;font-size:12px;}
+    #topbar-right{
+      order:4;width:100%;display:flex;overflow-x:auto;-webkit-overflow-scrolling:touch;
+      margin-left:0;flex-wrap:nowrap;padding-bottom:2px;scrollbar-width:none;
+    }
+    #topbar-right::-webkit-scrollbar{display:none;}
+    .icon-btn{flex-shrink:0;font-size:11px;padding:7px 10px;white-space:nowrap;}
+
+    /* Vistas con menos padding para aprovechar el ancho angosto */
+    #matrizview, #statsview, #otdrview{padding:14px;}
+    #editpanel{padding:14px;}
+    .modal-box{padding:14px;}
+    .photo-row{gap:6px;}
   }
+
+  @media (max-width:420px){
+    #topbar .logo{font-size:12px;}
+    .tab-btn{padding:6px 9px;font-size:11.5px;}
+    .icon-btn{font-size:10.5px;padding:6px 8px;}
+    .tool-grid{grid-template-columns:1fr;}
+  }
+  /* Gráfico de traza OTDR */
+  #otdrChartWrap{
+    background:var(--panel-2);border:1px solid var(--border);border-radius:8px;
+    padding:10px;margin-top:12px;
+  }
+  #otdrChartWrap .otdr-chart-title{font-size:11px;color:var(--muted);margin-bottom:6px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;}
+  #otdrChartCanvas{width:100%;height:auto;display:block;}
+  .otdr-chart-legend{display:flex;gap:14px;margin-top:6px;font-size:10.5px;color:var(--muted);flex-wrap:wrap;}
+  .otdr-chart-legend span{display:inline-flex;align-items:center;gap:4px;}
+  .otdr-chart-legend i{width:9px;height:9px;border-radius:50%;display:inline-block;}
 </style>
 </head>
 <body>
 <div id="app">
   <div id="topbar">
     <button class="icon-btn" id="menuBtn">☰</button>
-    <div class="logo"><span class="dot"></span><span class="full">Red FTTH Pro <b style="color:var(--accent);">DOMINGUEZ</b></span></div>
+    <div class="logo"><span class="dot"></span><span class="full">Red FTTH Pro</span></div>
     <div id="tabs">
       <button class="tab-btn active" data-tab="mapa">Mapa</button>
       <button class="tab-btn" data-tab="matriz">Matriz de Fusión</button>
@@ -2378,7 +2418,17 @@ function calcOtdrCut(){
         <div class="tmarker tbox" style="left:${Math.max(0,Math.min(100,proj.cumDist/total*100)).toFixed(2)}%;" data-label="${escapeHtml(box.code||box.name||'caja')}"></div>
         <div class="tmarker tcut" style="left:${Math.max(0,Math.min(100,target/total*100)).toFixed(2)}%;" data-label="corte"></div>
       </div>
+      <div id="otdrChartWrap">
+        <div class="otdr-chart-title">📈 Gráfico OTDR (traza estimada)</div>
+        <canvas id="otdrChartCanvas" width="600" height="220"></canvas>
+        <div class="otdr-chart-legend">
+          <span><i style="background:#58a6ff;"></i>Caja de referencia</span>
+          <span><i style="background:#F87171;"></i>Evento / corte</span>
+          <span><i style="background:#8FA0C0;"></i>Tramo sin señal (después del corte)</span>
+        </div>
+      </div>
     </div>`;
+  drawOtdrChart(dist, box.code||box.name||'Caja');
   document.getElementById('otdrCopyBtn').onclick = ()=>{
     navigator.clipboard?.writeText(pt.lat.toFixed(6)+', '+pt.lng.toFixed(6));
     toast('Coordenada copiada');
@@ -2386,6 +2436,95 @@ function calcOtdrCut(){
   document.getElementById('otdrViewMapBtn').onclick = ()=>focusOtdrCut(cut.id);
 }
 function fmtM(n){ return Math.abs(n).toFixed(1); }
+
+/* Dibuja una traza OTDR típica: línea con leve pendiente de atenuación
+   de fondo, un pico de reflexión en el punto del corte, y piso de ruido
+   (sin señal) después — así se ve como en un equipo OTDR real. */
+function drawOtdrChart(distMeters, boxLabel){
+  const canvas = document.getElementById('otdrChartCanvas');
+  if(!canvas) return;
+  const ctx = canvas.getContext('2d');
+  const cssWidth = canvas.parentElement.clientWidth - 20;
+  const dpr = window.devicePixelRatio || 1;
+  const H = 220;
+  canvas.style.width = cssWidth + 'px';
+  canvas.style.height = H + 'px';
+  canvas.width = cssWidth * dpr;
+  canvas.height = H * dpr;
+  ctx.setTransform(dpr,0,0,dpr,0,0);
+
+  const W = cssWidth;
+  const padL = 46, padR = 14, padT = 16, padB = 26;
+  ctx.clearRect(0,0,W,H);
+
+  const coef = 0.00025; // dB/m (~0.25 dB/km a 1550nm)
+  const margin = Math.max(distMeters * 0.35, 20);
+  const xMax = distMeters + margin;
+  const lossAtCut = distMeters * coef;
+  const spikeHeight = Math.max(0.4, lossAtCut * 4 + 0.3); // pico de reflexión visual
+  const yMax = Math.max(spikeHeight * 1.3, 1);
+
+  const xScale = m => padL + (m/xMax) * (W - padL - padR);
+  const yScale = db => padT + (db/yMax) * (H - padT - padB);
+
+  // grid
+  ctx.strokeStyle = '#22314F';
+  ctx.lineWidth = 1;
+  ctx.font = '10px -apple-system, Segoe UI, sans-serif';
+  ctx.fillStyle = '#8FA0C0';
+  for(let i=0;i<=4;i++){
+    const db = yMax * i/4;
+    const y = yScale(db);
+    ctx.beginPath(); ctx.moveTo(padL,y); ctx.lineTo(W-padR,y); ctx.stroke();
+    ctx.fillText('-'+db.toFixed(1)+' dB', 2, y+3);
+  }
+  [0, distMeters, xMax].forEach(m=>{
+    const x = xScale(m);
+    ctx.beginPath(); ctx.moveTo(x,padT); ctx.lineTo(x,H-padB); ctx.stroke();
+    ctx.fillText(Math.round(m)+' m', Math.min(Math.max(x-14,padL),W-padR-30), H-padB+14);
+  });
+
+  // trace: atenuación gradual hasta el corte
+  ctx.strokeStyle = '#00D9C0';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  ctx.moveTo(xScale(0), yScale(0));
+  ctx.lineTo(xScale(distMeters), yScale(lossAtCut));
+  ctx.stroke();
+
+  // pico de reflexión en el corte
+  ctx.strokeStyle = '#F87171';
+  ctx.beginPath();
+  ctx.moveTo(xScale(distMeters), yScale(lossAtCut));
+  ctx.lineTo(xScale(distMeters)+3, yScale(spikeHeight));
+  ctx.lineTo(xScale(distMeters)+6, yScale(lossAtCut + spikeHeight*0.55));
+  ctx.stroke();
+
+  // piso de ruido después del corte (sin señal)
+  ctx.strokeStyle = '#8FA0C0';
+  ctx.setLineDash([3,3]);
+  ctx.beginPath();
+  const noiseY = yScale(lossAtCut + spikeHeight*0.55);
+  ctx.moveTo(xScale(distMeters)+6, noiseY);
+  for(let x = xScale(distMeters)+6; x <= W-padR; x += 6){
+    ctx.lineTo(x, noiseY + (Math.random()-0.5)*4);
+  }
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  // marcador caja (inicio)
+  ctx.fillStyle = '#58a6ff';
+  ctx.beginPath(); ctx.arc(xScale(0), yScale(0), 4, 0, 7); ctx.fill();
+  ctx.fillStyle = '#E7EDF7';
+  ctx.fillText(boxLabel, xScale(0)+6, yScale(0)-6);
+
+  // marcador corte
+  ctx.fillStyle = '#F87171';
+  ctx.beginPath(); ctx.arc(xScale(distMeters), yScale(spikeHeight), 4, 0, 7); ctx.fill();
+  ctx.fillStyle = '#F87171';
+  ctx.fillText('Corte · '+Math.round(distMeters)+' m', Math.min(xScale(distMeters)+8, W-padR-90), yScale(spikeHeight)-4);
+}
+
 document.getElementById('otdrCalcBtn').onclick = calcOtdrCut;
 
 function renderOtdrCutMarkers(){
@@ -3037,7 +3176,7 @@ function buildKML(){
   });
   return `<?xml version="1.0" encoding="UTF-8"?>
 <kml xmlns="http://www.opengis.net/kml/2.2"><Document>
-<name>Red FTTH Pro DOMINGUEZ</name>
+<name>Red FTTH Pro</name>
 ${placemarks}
 </Document></kml>`;
 }
@@ -3060,7 +3199,7 @@ function pdfHeader(doc, title){
   doc.setTextColor(0,217,192);
   doc.setFontSize(15);
   doc.setFont(undefined,'bold');
-  doc.text('Red FTTH Pro DOMINGUEZ', 14, 12);
+  doc.text('Red FTTH Pro', 14, 12);
   doc.setTextColor(255,255,255);
   doc.setFontSize(10);
   doc.setFont(undefined,'normal');
