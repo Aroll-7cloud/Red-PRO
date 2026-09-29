@@ -9408,13 +9408,21 @@ function renderNapClientsByZone(){
         } else {
           pctWrap.style.display='';
           const pctPeriods = periods.slice(1);
-          const NAP_PCT_MIN_BASE = 30;
+          const NAP_PCT_MIN_BASE = 100;
           const pctFor = (p, prevP, z)=>{
             const p0 = z ? ((history[prevP].zones[z]&&history[prevP].zones[z].clientes)||0) : history[prevP].totalClientes;
             const p1 = z ? ((history[p].zones[z]&&history[p].zones[z].clientes)||0) : history[p].totalClientes;
             if(p0 < NAP_PCT_MIN_BASE) return null;
             return (p1-p0)/p0*100;
           };
+          // Eje fijo (en vez de autoescalar al valor más alto): así un pico
+          // puntual no aplasta el resto contra el 0%. Si algún mes se pasa
+          // del rango, la barra se corta arriba/abajo — el valor real sigue
+          // estando en el tooltip.
+          const pctAllVals = [];
+          zoneKeysInHistory.concat([null]).forEach(z=> pctPeriods.forEach((p,i)=>{ const v=pctFor(p, periods[i], z); if(v!=null) pctAllVals.push(v); }));
+          const pctP90 = pctAllVals.length ? pctAllVals.map(Math.abs).sort((a,b)=>a-b)[Math.floor(pctAllVals.length*0.9)] : 50;
+          const pctAxisCap = Math.max(20, Math.min(200, Math.ceil(pctP90/10)*10 + 10));
           napDrawChart('napMonthlyPctChart', {
             type:'bar',
             data:{
@@ -9433,7 +9441,7 @@ function renderNapClientsByZone(){
                 datalabels: napNoLabels,
                 tooltip:{ callbacks:{ label:(ctx)=> ctx.parsed.y==null ? ` ${ctx.dataset.label}: base muy chica` : ` ${ctx.dataset.label}: ${ctx.parsed.y>0?'+':''}${ctx.parsed.y.toFixed(1)}%` } } },
               scales:{ x:{ ticks:{color:'#8FA0C0', autoSkip:true, maxTicksLimit:18, maxRotation:60, minRotation:0}, grid:{display:false} },
-                y:{ ticks:{color:'#8FA0C0', callback:(v)=>v+'%'}, grid:{color:'rgba(143,160,192,.12)'} } } }
+                y:{ min:-pctAxisCap, max:pctAxisCap, ticks:{color:'#8FA0C0', callback:(v)=>v+'%'}, grid:{color:'rgba(143,160,192,.12)'} } } }
           });
         }
       }
